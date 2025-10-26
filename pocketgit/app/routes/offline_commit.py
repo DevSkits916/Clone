@@ -34,8 +34,8 @@ def offline_commit(
     staged_paths: list[str] = []
     for path, content in latest_changes.items():
         try:
-        repo.write_file(path, content)
-        staged_paths.append(path)
+            repo.write_file(path, content)
+            staged_paths.append(path)
         except InvalidPathError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except OSError as exc:
