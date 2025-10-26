@@ -1,0 +1,374 @@
+.panel {
+  background: rgba(30, 41, 59, 0.85);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  box-shadow: 0 10px 35px rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(10px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  background: rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  color: inherit;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background: rgba(59, 130, 246, 0.45);
+  transform: translateY(-1px);
+}
+
+button.secondary {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+button.danger {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  color: inherit;
+  width: 100%;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.error-text {
+  color: #f87171;
+}
+
+.muted {
+  opacity: 0.7;
+}
+
+.repo-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.repo-button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.repo-button.active {
+  background: rgba(34, 197, 94, 0.35);
+  border-color: rgba(34, 197, 94, 0.6);
+}
+
+.repo-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-branch {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.tree-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tree-item {
+  width: 100%;
+  text-align: left;
+  background: rgba(71, 85, 105, 0.2);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.editor-container {
+  flex: 1;
+  min-height: 400px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.file-path {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preview-container iframe {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.preview-console {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.console-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.console-log {
+  max-height: 160px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.log-line.result {
+  color: #34d399;
+}
+
+.log-line.error {
+  color: #f87171;
+}
+
+.log-line.warn {
+  color: #facc15;
+}
+
+.log-line.input {
+  opacity: 0.8;
+}
+
+.log-method {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.git-panel .status-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.git-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.git-section-block h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.ahead-behind {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.branch-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.status-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.status-list .link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #60a5fa;
+  text-align: left;
+}
+
+.commit-form,
+.merge-form,
+.new-branch,
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sync-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: rgba(71, 85, 105, 0.2);
+  border: 1px solid rgba(71, 85, 105, 0.35);
+}
+
+.result-path {
+  font-weight: 600;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal {
+  background: rgba(30, 41, 59, 0.95);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .panel {
+    padding: 0.75rem 0.65rem;
+  }
+
+  .editor-container {
+    min-height: 320px;
+  }
+}
+
+.panel-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
