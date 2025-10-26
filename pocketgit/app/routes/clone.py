@@ -13,7 +13,8 @@ router = APIRouter()
 @router.post("/clone", response_model=CloneResponse)
 def clone_repo(payload: CloneRequest) -> CloneResponse:
     try:
-        repo = repo_manager.clone_repository(payload.url, payload.branch, payload.auth.dict() if payload.auth else None)
+        auth = payload.auth.dict() if payload.auth else None
+        repo = repo_manager.clone_repository(payload.url, payload.branch, auth, payload.sshKeyId)
     except GitCommandError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     metadata = repo.read_metadata()

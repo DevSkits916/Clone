@@ -13,6 +13,9 @@ from .routes.search import router as search_router
 from .routes.import_zip import router as import_zip_router
 from .routes.shortcut import router as shortcut_router
 from .routes.suggest_commit import router as suggest_commit_router
+from .routes.offline_commit import router as offline_commit_router
+from .routes.lfs import router as lfs_router
+from .routes.keys import router as keys_router
 
 
 app = FastAPI(title="PocketGit", version="1.0.0")
@@ -30,3 +33,6 @@ app.include_router(search_router)
 app.include_router(import_zip_router)
 app.include_router(shortcut_router)
 app.include_router(suggest_commit_router)
+app.include_router(offline_commit_router)
+app.include_router(lfs_router)
+app.include_router(keys_router)

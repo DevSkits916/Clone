@@ -27,6 +27,7 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [infoMessage, setInfoMessage] = useState('');
   const [previewLogs, setPreviewLogs] = useState([]);
   const [consoleInput, setConsoleInput] = useState('');
 
@@ -46,12 +47,18 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
     let ignore = false;
     setLoading(true);
     setError(null);
+    setInfoMessage('');
     getFile(activeRepoId, filePath)
       .then((data) => {
         if (ignore) return;
         const nextContent = typeof data === 'string' ? data : data?.content ?? '';
         setContent(nextContent);
         setDirty(false);
+        if (typeof data === 'object' && data?.offline) {
+          setInfoMessage('Loaded cached copy. Changes will sync when you reconnect.');
+        } else {
+          setInfoMessage('');
+        }
       })
       .catch((err) => {
         if (!ignore) {
@@ -174,7 +181,15 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
     setIsSaving(true);
     setError(null);
     try {
-      await saveFile(activeRepoId, filePath, content);
+      const result = await saveFile(activeRepoId, filePath, content);
+      if (result?.offline) {
+        setInfoMessage('Saved locally. Changes will sync once you are online.');
+        if (result?.error) {
+          setError(result.error.message || String(result.error));
+        }
+      } else {
+        setInfoMessage('');
+      }
       setDirty(false);
     } catch (err) {
       setError(err.message);
@@ -208,6 +223,7 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
         </div>
       </div>
       {loading && <p>Loading file…</p>}
+      {infoMessage && !loading && <p className="info-text">{infoMessage}</p>}
       {error && <p className="error-text">{error}</p>}
       {mode === 'editor' && (
         <div className="editor-container" ref={editorContainerRef} />

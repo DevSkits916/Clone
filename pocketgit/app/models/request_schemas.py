@@ -14,6 +14,7 @@ class CloneRequest(BaseModel):
     url: str
     branch: Optional[str] = None
     auth: Optional[AuthCredentials] = None
+    sshKeyId: Optional[str] = None
 
 
 class BranchCreateRequest(BaseModel):
@@ -35,6 +36,23 @@ class BranchDeleteRequest(BaseModel):
 class FileWriteRequest(BaseModel):
     path: str
     content: str
+
+
+class OfflineChange(BaseModel):
+    path: str
+    content: str
+
+
+class OfflineCommitRequest(BaseModel):
+    changes: List[OfflineChange]
+    message: str = "Offline edits sync"
+    authorName: Optional[str] = None
+    authorEmail: Optional[str] = None
+
+
+class SSHKeyUploadRequest(BaseModel):
+    privateKey: str = Field(alias="privateKey")
+    name: Optional[str] = None
 
 
 class StageRequest(BaseModel):

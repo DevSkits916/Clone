@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { cloneRepo, getRepos, importZip } from '../hooks/useBackend.js';
+import { cloneRepo, getRepos, importZip, listSSHKeys } from '../hooks/useBackend.js';
 import ModalCloneRepo from './ModalCloneRepo.jsx';
 import ModalImportZip from './ModalImportZip.jsx';
 
@@ -13,6 +13,7 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importError, setImportError] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [sshKeys, setSshKeys] = useState([]);
 
   const loadRepos = async () => {
     setLoading(true);
@@ -35,9 +36,26 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
     }
   };
 
+  const loadSshKeys = async () => {
+    try {
+      const response = await listSSHKeys();
+      const keys = Array.isArray(response?.keys) ? response.keys : [];
+      setSshKeys(keys);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to load SSH keys', err);
+    }
+  };
+
   useEffect(() => {
     loadRepos();
+    loadSshKeys();
+    const handleKeysUpdated = () => {
+      loadSshKeys();
+    };
+    window.addEventListener('pocketgit:ssh-keys-updated', handleKeysUpdated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.removeEventListener('pocketgit:ssh-keys-updated', handleKeysUpdated);
   }, []);
 
   const handleClone = async (payload) => {
@@ -125,6 +143,7 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
         onSubmit={handleClone}
         isLoading={isCloning}
         error={modalError}
+        sshKeys={sshKeys}
       />
       <ModalImportZip
         isOpen={isImportModalOpen}
