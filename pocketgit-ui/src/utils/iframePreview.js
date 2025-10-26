@@ -32,7 +32,7 @@ ${htmlContent}
       parent.postMessage({ source, type: 'console', method: 'error', args: [err.message] }, '*');
     }
   }
-  ['log', 'info', 'warn', 'error'].forEach((method) => {
+  ['log', 'info', 'warn', 'error', 'debug'].forEach((method) => {
     const original = console[method];
     console[method] = function(...args) {
       send(method, args);
@@ -41,6 +41,13 @@ ${htmlContent}
       }
     };
   });
+  const originalClear = console.clear;
+  console.clear = function(...args) {
+    send('clear', []);
+    if (originalClear) {
+      originalClear.apply(console, args);
+    }
+  };
   window.addEventListener('message', (event) => {
     if (!event.data || event.data.source !== source || event.data.type !== 'run-script') {
       return;

@@ -28,6 +28,13 @@ export function cloneRepo(payload) {
   }).then(handleResponse);
 }
 
+export function importZip(formData) {
+  return fetch(`${API_BASE_URL}/import-zip`, {
+    method: 'POST',
+    body: formData
+  }).then(handleResponse);
+}
+
 export function getTree(repoId, path = '') {
   const encodedPath = encodeURIComponent(path);
   return fetch(`${API_BASE_URL}/repo/${repoId}/tree?path=${encodedPath}`).then(handleResponse);
@@ -75,6 +82,14 @@ export function commit(repoId, payload) {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(payload)
+  }).then(handleResponse);
+}
+
+export function suggestCommitMessage(repoId) {
+  return fetch(`${API_BASE_URL}/repo/${repoId}/suggest-commit-message`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({})
   }).then(handleResponse);
 }
 

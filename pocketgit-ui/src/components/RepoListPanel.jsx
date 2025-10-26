@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { cloneRepo, getRepos } from '../hooks/useBackend.js';
+import { cloneRepo, getRepos, importZip } from '../hooks/useBackend.js';
 import ModalCloneRepo from './ModalCloneRepo.jsx';
+import ModalImportZip from './ModalImportZip.jsx';
 
 export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
   const [repos, setRepos] = useState([]);
@@ -9,6 +10,9 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalError, setModalError] = useState(null);
   const [isCloning, setIsCloning] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importError, setImportError] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const loadRepos = async () => {
     setLoading(true);
@@ -60,11 +64,38 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
     setModalError(null);
   };
 
+  const handleImport = async (formData) => {
+    setIsImporting(true);
+    setImportError(null);
+    try {
+      const result = await importZip(formData);
+      await loadRepos();
+      const newRepoId = result?.repoId || result?.id || result?.name;
+      if (newRepoId) {
+        onSelectRepo(newRepoId);
+      }
+      setIsImportModalOpen(false);
+      setImportError(null);
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleCloseImportModal = () => {
+    setIsImportModalOpen(false);
+    setImportError(null);
+  };
+
   return (
     <div className="panel repo-list">
       <div className="panel-header">
         <h2>Repositories</h2>
-        <button onClick={() => { setIsModalOpen(true); setModalError(null); }}>Clone new repo</button>
+        <div className="panel-actions">
+          <button onClick={() => { setIsImportModalOpen(true); setImportError(null); }}>Import .zip</button>
+          <button onClick={() => { setIsModalOpen(true); setModalError(null); }}>Clone new repo</button>
+        </div>
       </div>
       {loading && <p>Loading repositories…</p>}
       {error && <p className="error-text">{error}</p>}
@@ -94,6 +125,13 @@ export default function RepoListPanel({ activeRepoId, onSelectRepo }) {
         onSubmit={handleClone}
         isLoading={isCloning}
         error={modalError}
+      />
+      <ModalImportZip
+        isOpen={isImportModalOpen}
+        onClose={handleCloseImportModal}
+        onSubmit={handleImport}
+        isLoading={isImporting}
+        error={importError}
       />
     </div>
   );

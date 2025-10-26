@@ -207,6 +207,35 @@ curl -X POST http://127.0.0.1:8000/repo/<REPO_ID>/merge \
 curl "http://127.0.0.1:8000/repo/<REPO_ID>/search?q=TODO"
 ```
 
+### 19. Import a zipped project folder
+
+```bash
+curl -X POST http://127.0.0.1:8000/import-zip \
+  -F "repoName=My Project" \
+  -F "file=@/path/to/folder.zip"
+```
+
+### 20. Suggest a commit message from staged changes
+
+```bash
+curl -X POST http://127.0.0.1:8000/repo/<REPO_ID>/suggest-commit-message
+```
+
+## Shortcut / automation endpoints (no auth, single-user only)
+
+These helper endpoints allow iOS Shortcuts or other simple automations to trigger git actions with a GET request.
+
+```bash
+# Push the current branch
+curl "http://127.0.0.1:8000/shortcut/push?repoId=<REPO_ID>"
+
+# Stage everything, commit, and push
+curl "http://127.0.0.1:8000/shortcut/commit-and-push?repoId=<REPO_ID>&msg=Quick%20sync&name=Jane%20Doe&email=jane%40example.com"
+
+# Fetch from the remote
+curl "http://127.0.0.1:8000/shortcut/fetch?repoId=<REPO_ID>"
+```
+
 ## Deploying on Render
 
 1. Push this repository to your own GitHub repository.

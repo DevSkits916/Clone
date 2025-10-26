@@ -31,6 +31,28 @@ All backend requests use the `API_BASE_URL` defined in `src/config.js`. Update t
 export const API_BASE_URL = "http://localhost:8000";
 ```
 
+## Import projects from a ZIP archive
+
+From the **Repositories** panel, click **Import .zip** to upload a zipped folder. Provide an optional display name and PocketGit will unpack the archive, initialise a Git repository (if needed), and select it automatically once the import finishes.
+
+## Automation URL helpers
+
+The Git panel surfaces ready-to-copy URLs for the new shortcut endpoints:
+
+- Push the current branch
+- Stage everything, commit with a message, and push (fill in your own commit message)
+- Fetch from the remote
+
+Copy these URLs into iOS Shortcuts or any HTTP automation tool to trigger Git actions without opening the UI.
+
+## Commit message suggestions
+
+When staged changes are present, press **Suggest** next to the commit message box to request an automatic summary from the backend. The suggestion will populate the textarea if it was empty and also appears below the field for reference.
+
+## HTML preview console enhancements
+
+In preview mode for HTML files, the embedded sandbox now mirrors console output from the iframe. The console panel lists logs, warnings, errors, evaluation results, and provides a **Clear** button. Use the input box beneath it to run custom JavaScript within the previewed document.
+
 ## Build for Production
 
 Create a production build that outputs a static site to `dist/`:
