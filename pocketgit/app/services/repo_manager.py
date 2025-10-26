@@ -28,9 +28,22 @@ class RepoManager:
         except FileNotFoundError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
 
-    def clone_repository(self, url: str, branch: Optional[str], auth: Optional[Dict[str, str]]) -> GitRepo:
+    def clone_repository(
+        self,
+        url: str,
+        branch: Optional[str],
+        auth: Optional[Dict[str, str]],
+        ssh_key_id: Optional[str] = None,
+    ) -> GitRepo:
         repo_id = self.generate_repo_id()
-        repo = GitRepo.clone_to_path(repo_id, self.base_path, url, branch=branch, auth=auth)
+        repo = GitRepo.clone_to_path(
+            repo_id,
+            self.base_path,
+            url,
+            branch=branch,
+            auth=auth,
+            ssh_key_id=ssh_key_id,
+        )
         return repo
 
     def list_repositories(self) -> List[GitRepo]:

@@ -45,6 +45,29 @@ The Git panel surfaces ready-to-copy URLs for the new shortcut endpoints:
 
 Copy these URLs into iOS Shortcuts or any HTTP automation tool to trigger Git actions without opening the UI.
 
+## Offline caching and sync
+
+The UI caches files in IndexedDB as soon as you open them. When the connection drops the **Offline Mode** banner appears and the editor loads cached content. Saving while offline stores your changes locally and queues them for `/offline-commit` once the network returns. You can trigger the queue manually from the Git panel via **Sync Offline Changes**. The banner reports pending repositories and offers a one-click retry when you are back online.
+
+Background sync is also enabled: if the browser supports the Sync API, the service worker flushes the queue automatically with the commit message _"Auto-sync from background"_.
+
+## Git LFS downloads
+
+Files tracked by Git LFS are marked with a 📦 icon and an **LFS** tag in the file tree. Clicking an LFS entry downloads the binary via `/repo/<repoId>/lfs/fetch` and saves it locally using the browser's download manager.
+
+## SSH key management
+
+Use the **SSH Keys** panel to upload, list, and delete deploy keys. Keys are stored securely on the backend with `chmod 600`. When cloning a repository you can choose a stored key from the **SSH key (optional)** selector in the Clone modal. This enables passwordless operations against `git@` style remotes.
+
+## Install as a PWA
+
+The project ships with a web app manifest and service worker. To install it:
+
+- **iPhone / iPad:** open the site in Safari, tap the Share icon, then choose **Add to Home Screen**.
+- **Desktop (Chromium/Edge):** open the site and use the install prompt in the address bar or via the browser menu.
+
+Once installed, the app runs full-screen, caches core assets, and continues to sync offline edits in the background when the browser grants background sync permissions.
+
 ## Commit message suggestions
 
 When staged changes are present, press **Suggest** next to the commit message box to request an automatic summary from the backend. The suggestion will populate the textarea if it was empty and also appears below the field for reference.

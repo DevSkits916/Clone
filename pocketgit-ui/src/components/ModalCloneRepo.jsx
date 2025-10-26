@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 
-export default function ModalCloneRepo({ isOpen, onClose, onSubmit, isLoading, error }) {
+export default function ModalCloneRepo({ isOpen, onClose, onSubmit, isLoading, error, sshKeys = [] }) {
   const [formState, setFormState] = useState({
     url: '',
     branch: '',
     username: '',
-    password: ''
+    password: '',
+    sshKeyId: ''
   });
 
   useEffect(() => {
     if (!isOpen) {
-      setFormState({ url: '', branch: '', username: '', password: '' });
+      setFormState({ url: '', branch: '', username: '', password: '', sshKeyId: '' });
     }
   }, [isOpen]);
 
@@ -25,7 +26,8 @@ export default function ModalCloneRepo({ isOpen, onClose, onSubmit, isLoading, e
       url: formState.url,
       branch: formState.branch || undefined,
       username: formState.username || undefined,
-      password: formState.password || undefined
+      password: formState.password || undefined,
+      sshKeyId: formState.sshKeyId || undefined
     };
     onSubmit(payload);
   };
@@ -80,6 +82,17 @@ export default function ModalCloneRepo({ isOpen, onClose, onSubmit, isLoading, e
               value={formState.password}
               onChange={handleChange}
             />
+          </label>
+          <label>
+            SSH key (optional)
+            <select name="sshKeyId" value={formState.sshKeyId} onChange={handleChange}>
+              <option value="">Use default SSH agent</option>
+              {sshKeys.map((key) => (
+                <option key={key.id} value={key.id}>
+                  {key.name || key.id}
+                </option>
+              ))}
+            </select>
           </label>
           {error && <p className="error-text">{error}</p>}
           <div className="modal-actions">

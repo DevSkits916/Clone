@@ -7,9 +7,11 @@ import {
   getBranches,
   getDiff,
   getStatus,
+  hasOfflineChanges as checkOfflineChanges,
   merge,
   push,
   suggestCommitMessage,
+  syncOfflineChanges,
   stageFile,
   switchBranch,
   unstageFile
@@ -27,7 +29,7 @@ function normalizeBranches(data) {
     .filter(Boolean);
 }
 
-export default function GitPanel({ activeRepoId, onOpenFile }) {
+export default function GitPanel({ activeRepoId, onOpenFile, offlineQueued = false, onOfflineSync }) {
   const [status, setStatus] = useState(null);
   const [diffText, setDiffText] = useState('');
   const [branches, setBranches] = useState([]);
@@ -43,6 +45,9 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
   const [error, setError] = useState(null);
   const [lastSuggestion, setLastSuggestion] = useState('');
   const [suggesting, setSuggesting] = useState(false);
+  const [offlinePending, setOfflinePending] = useState(offlineQueued);
+  const [offlineSyncing, setOfflineSyncing] = useState(false);
+  const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
 
   const loadAll = async () => {
     if (!activeRepoId) {
@@ -78,7 +83,30 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
     setLastSuggestion('');
     setCommitMessage('');
     setSuggesting(false);
-  }, [activeRepoId]);
+    setOfflinePending(offlineQueued);
+  }, [activeRepoId, offlineQueued]);
+
+  useEffect(() => {
+    if (!activeRepoId) {
+      setOfflinePending(false);
+      return;
+    }
+    let cancelled = false;
+    checkOfflineChanges(activeRepoId)
+      .then((pending) => {
+        if (!cancelled) {
+          setOfflinePending(Boolean(pending));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOfflinePending(Boolean(offlineQueued));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRepoId, offlineQueued]);
 
   const runAction = async (fn, message) => {
     setLoadingMessage(message);
@@ -135,6 +163,24 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
   };
 
   const diffLines = diffText ? diffText.split('\n') : [];
+
+  const handleSyncOffline = async () => {
+    if (!activeRepoId || offlineSyncing) return;
+    setOfflineSyncing(true);
+    setError(null);
+    try {
+      await syncOfflineChanges(activeRepoId, { commitMessage: 'Synced offline edits' });
+      setOfflinePending(false);
+      if (onOfflineSync) {
+        await onOfflineSync();
+      }
+      await loadAll();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setOfflineSyncing(false);
+    }
+  };
 
   return (
     <div className="panel git-panel">
@@ -240,7 +286,20 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
         <div className="sync-buttons">
           <button onClick={handleFetch}>Fetch</button>
           <button onClick={handlePush}>Push</button>
+          <button
+            onClick={handleSyncOffline}
+            disabled={!offlinePending || offlineSyncing || !isOnline}
+          >
+            {offlineSyncing ? 'Syncing offline…' : 'Sync Offline Changes'}
+          </button>
         </div>
+        <p className="muted offline-hint">
+          {offlinePending
+            ? isOnline
+              ? 'Offline edits are waiting to sync.'
+              : 'Offline edits queued. Reconnect to sync.'
+            : 'All offline edits are synced.'}
+        </p>
         <form className="merge-form" onSubmit={(event) => { event.preventDefault(); handleMerge(); }}>
           <label>
             From branch

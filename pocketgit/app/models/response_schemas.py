@@ -71,6 +71,10 @@ class CommitResponse(OkResponse):
     commitHash: str
 
 
+class OfflineCommitResponse(OkResponse):
+    commitHash: Optional[str] = None
+
+
 class PushResponse(OkResponse):
     pushed: bool
 
@@ -87,3 +91,36 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     results: List[SearchResult]
+
+
+class SSHKeyInfo(BaseModel):
+    id: str
+    name: Optional[str]
+    createdAt: str
+
+
+class SSHKeyListResponse(BaseModel):
+    keys: List[SSHKeyInfo]
+
+
+class SSHKeyUploadResponse(BaseModel):
+    key: SSHKeyInfo
+
+
+class LFSObject(BaseModel):
+    path: str
+    oid: Optional[str] = None
+    size: Optional[int] = None
+    tracked: bool = True
+    present: Optional[bool] = None
+
+
+class LFSListResponse(BaseModel):
+    files: List[LFSObject]
+
+
+class LFSFetchResponse(BaseModel):
+    path: str
+    encoding: str
+    content: str
+    size: int

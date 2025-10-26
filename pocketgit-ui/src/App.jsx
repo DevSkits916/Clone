@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import RepoListPanel from './components/RepoListPanel.jsx';
 import FileTreePanel from './components/FileTreePanel.jsx';
 import EditorPanel from './components/EditorPanel.jsx';
 import GitPanel from './components/GitPanel.jsx';
 import SearchPanel from './components/SearchPanel.jsx';
+import SSHKeysPanel from './components/SSHKeysPanel.jsx';
+import { OFFLINE_EVENT, getReposWithOfflineChanges, syncAllOfflineChanges } from './hooks/useBackend.js';
 
 const MOBILE_BREAKPOINT = 900;
 
@@ -11,7 +13,8 @@ const TABS = [
   { key: 'files', label: 'Files' },
   { key: 'editor', label: 'Editor' },
   { key: 'git', label: 'Git' },
-  { key: 'search', label: 'Search' }
+  { key: 'search', label: 'Search' },
+  { key: 'keys', label: 'SSH Keys' }
 ];
 
 const HTML_EXTENSIONS = ['.html', '.htm'];
@@ -23,6 +26,44 @@ export default function App() {
   const [editorMode, setEditorMode] = useState('editor');
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState('files');
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
+  const [pendingOfflineRepos, setPendingOfflineRepos] = useState([]);
+
+  const refreshOfflineState = useCallback(async () => {
+    try {
+      const repos = await getReposWithOfflineChanges();
+      setPendingOfflineRepos(repos);
+      return repos;
+    } catch (error) {
+      return [];
+    }
+  }, []);
+
+  const syncOfflineEdits = useCallback(
+    async (commitMessage = 'Offline edits sync', force = false) => {
+      if (!force && !isOnline) {
+        return;
+      }
+      setSyncError(null);
+      setIsSyncing(true);
+      try {
+        const results = await syncAllOfflineChanges({ commitMessage });
+        const failures = (results || []).filter((entry) => entry && entry.error);
+        if (failures.length) {
+          const details = failures.map((entry) => entry.error?.message || String(entry.error)).join('; ');
+          throw new Error(details || 'Some repositories could not be synced');
+        }
+      } catch (error) {
+        setSyncError(error.message);
+      } finally {
+        setIsSyncing(false);
+        refreshOfflineState();
+      }
+    },
+    [isOnline, refreshOfflineState]
+  );
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
@@ -30,6 +71,37 @@ export default function App() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncOfflineEdits('Offline edits sync', true);
+    };
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [syncOfflineEdits]);
+
+  useEffect(() => {
+    refreshOfflineState().then((repos) => {
+      if (repos.length && isOnline) {
+        syncOfflineEdits('Offline edits sync');
+      }
+    });
+    const handleOfflineEvent = () => {
+      refreshOfflineState();
+    };
+    window.addEventListener(OFFLINE_EVENT, handleOfflineEvent);
+    return () => {
+      window.removeEventListener(OFFLINE_EVENT, handleOfflineEvent);
+    };
+  }, [isOnline, refreshOfflineState, syncOfflineEdits]);
 
   useEffect(() => {
     setCurrentPath('');
@@ -52,6 +124,31 @@ export default function App() {
     if (isMobile) {
       setActiveTab('editor');
     }
+  };
+
+  const bannerMessage = useMemo(() => {
+    if (!isOnline) {
+      const pendingCount = pendingOfflineRepos.length;
+      if (pendingCount > 0) {
+        return `Offline Mode — ${pendingCount} repo${pendingCount === 1 ? '' : 's'} waiting to sync`;
+      }
+      return 'Offline Mode';
+    }
+    if (isSyncing) {
+      return 'Syncing offline edits…';
+    }
+    if (syncError) {
+      return `Sync failed: ${syncError}`;
+    }
+    if (pendingOfflineRepos.length > 0) {
+      return `Pending offline changes in ${pendingOfflineRepos.length} repo${pendingOfflineRepos.length === 1 ? '' : 's'}`;
+    }
+    return null;
+  }, [isOnline, isSyncing, pendingOfflineRepos.length, syncError]);
+
+  const handleBannerSync = () => {
+    if (!isOnline) return;
+    syncOfflineEdits('Offline edits sync', true);
   };
 
   const renderMobilePanel = () => {
@@ -86,6 +183,8 @@ export default function App() {
           <GitPanel
             activeRepoId={activeRepoId}
             onOpenFile={handleOpenFile}
+            offlineQueued={pendingOfflineRepos.includes(activeRepoId)}
+            onOfflineSync={() => syncOfflineEdits('Synced offline edits', true)}
           />
         );
       case 'search':
@@ -93,6 +192,12 @@ export default function App() {
           <SearchPanel
             activeRepoId={activeRepoId}
             onOpenFile={handleOpenFile}
+          />
+        );
+      case 'keys':
+        return (
+          <SSHKeysPanel
+            isOnline={isOnline}
           />
         );
       default:
@@ -106,6 +211,18 @@ export default function App() {
         <h1>PocketGit</h1>
         {activeRepoId && <span className="repo-id">Repo: {activeRepoId}</span>}
       </header>
+      {bannerMessage && (
+        <div
+          className={`status-banner ${!isOnline ? 'offline' : syncError ? 'error' : isSyncing ? 'syncing' : 'pending'}`}
+        >
+          <span>{bannerMessage}</span>
+          {isOnline && (isSyncing || pendingOfflineRepos.length > 0 || syncError) && (
+            <button type="button" onClick={handleBannerSync} disabled={isSyncing}>
+              {isSyncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          )}
+        </div>
+      )}
       {isMobile ? (
         <>
           <nav className="tab-bar">
@@ -136,6 +253,7 @@ export default function App() {
               onChangePath={setCurrentPath}
               onOpenFile={handleOpenFile}
             />
+            <SSHKeysPanel isOnline={isOnline} />
           </aside>
           <section className="editor-section">
             <EditorPanel
@@ -150,6 +268,10 @@ export default function App() {
             <GitPanel
               activeRepoId={activeRepoId}
               onOpenFile={handleOpenFile}
+              offlineQueued={pendingOfflineRepos.includes(activeRepoId)}
+              onOfflineSync={() => {
+                syncOfflineEdits('Synced offline edits', true);
+              }}
             />
             <SearchPanel
               activeRepoId={activeRepoId}

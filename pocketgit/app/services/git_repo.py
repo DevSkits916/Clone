@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import fnmatch
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +14,7 @@ from git import Actor, GitCommandError, Repo
 
 from ..utils.diff_utils import combine_diffs
 from ..utils.fs_utils import InvalidPathError, ensure_within_repo
+from .ssh_keys import ssh_key_manager
 
 
 @dataclass
@@ -19,6 +23,7 @@ class RepoMetadata:
     remote_url: Optional[str]
     default_branch: Optional[str]
     name: Optional[str] = None
+    ssh_key_id: Optional[str] = None
 
     @classmethod
     def from_file(cls, path: Path, repo_id: str) -> "RepoMetadata | None":
@@ -30,6 +35,7 @@ class RepoMetadata:
             remote_url=data.get("remote"),
             default_branch=data.get("default_branch"),
             name=data.get("name"),
+            ssh_key_id=data.get("ssh_key_id"),
         )
 
     def to_file(self, path: Path) -> None:
@@ -38,6 +44,7 @@ class RepoMetadata:
             "remote": self.remote_url,
             "default_branch": self.default_branch,
             "name": self.name,
+            "ssh_key_id": self.ssh_key_id,
         }
         path.write_text(json.dumps(payload, indent=2))
         git_repo_cls = globals().get("GitRepo")
@@ -74,6 +81,7 @@ class GitRepo:
         url: str,
         branch: Optional[str] = None,
         auth: Optional[dict] = None,
+        ssh_key_id: Optional[str] = None,
     ) -> "GitRepo":
         target_path = base_path / repo_id
         if target_path.exists():
@@ -81,7 +89,10 @@ class GitRepo:
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         clone_url = cls._apply_auth_to_url(url, auth)
-        repo = Repo.clone_from(clone_url, target_path)
+        env = ssh_key_manager.get_env_for_key(ssh_key_id) if ssh_key_id else None
+        if env and not (url.startswith("git@") or urlparse(url).scheme in {"ssh"}):
+            env = None
+        repo = Repo.clone_from(clone_url, target_path, env=env)
 
         if branch:
             repo.git.checkout(branch)
@@ -90,7 +101,12 @@ class GitRepo:
         if not repo.head.is_detached:
             default_branch = repo.active_branch.name
 
-        metadata = RepoMetadata(repo_id=repo_id, remote_url=url, default_branch=default_branch)
+        metadata = RepoMetadata(
+            repo_id=repo_id,
+            remote_url=url,
+            default_branch=default_branch,
+            ssh_key_id=ssh_key_id if env else None,
+        )
         metadata.to_file(target_path / cls.METADATA_FILENAME)
         return cls(repo_id, base_path)
 
@@ -126,6 +142,25 @@ class GitRepo:
             netloc = netloc.split("@", 1)[-1]
         netloc = f"{credentials}@{netloc}"
         return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+
+    def _build_git_env(self) -> Optional[dict]:
+        metadata = self.read_metadata()
+        if not metadata or not metadata.ssh_key_id:
+            return None
+        remote_url = metadata.remote_url
+        if not remote_url:
+            try:
+                remote = self.get_default_remote()
+                remote_urls = list(remote.urls)
+                if remote_urls:
+                    remote_url = remote_urls[0]
+            except Exception:
+                remote_url = None
+        if not remote_url:
+            return None
+        if remote_url.startswith("git@") or remote_url.startswith("ssh://"):
+            return ssh_key_manager.get_env_for_key(metadata.ssh_key_id)
+        return None
 
     def get_name(self) -> str:
         metadata = self.read_metadata()
@@ -180,6 +215,13 @@ class GitRepo:
         if not target.exists() or not target.is_file():
             raise FileNotFoundError(path)
         return target.read_text(encoding="utf-8")
+
+    def read_file_bytes(self, path: str) -> bytes:
+        root = Path(self.repo.working_tree_dir)
+        target = ensure_within_repo(root, path)
+        if not target.exists() or not target.is_file():
+            raise FileNotFoundError(path)
+        return target.read_bytes()
 
     def write_file(self, path: str, content: str) -> None:
         root = Path(self.repo.working_tree_dir)
@@ -245,6 +287,138 @@ class GitRepo:
             unstaged = ""
         return combine_diffs(staged, unstaged)
 
+    def list_lfs_pointers(self) -> List[dict]:
+        entries: List[dict] = []
+        try:
+            result = subprocess.run(
+                ["git", "lfs", "ls-files", "--json"],
+                cwd=self.path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                path = payload.get("name") or payload.get("path")
+                if not path:
+                    continue
+                pointer_info = {
+                    "path": path,
+                    "oid": payload.get("oid"),
+                    "size": payload.get("size"),
+                    "tracked": payload.get("tracked", True),
+                    "present": payload.get("present"),
+                }
+                entries.append(pointer_info)
+        except FileNotFoundError:
+            entries = []
+        except subprocess.CalledProcessError:
+            entries = []
+
+        if entries:
+            return entries
+
+        return self._list_lfs_from_gitattributes()
+
+    def _list_lfs_from_gitattributes(self) -> List[dict]:
+        patterns = self._collect_lfs_patterns()
+        if not patterns:
+            return []
+        try:
+            tracked_files = self.repo.git.ls_files().splitlines()
+        except GitCommandError:
+            return []
+        root = Path(self.repo.working_tree_dir)
+        matches: List[dict] = []
+        for file_path in tracked_files:
+            if any(fnmatch.fnmatch(file_path, pattern) for pattern in patterns):
+                pointer = self._read_pointer_metadata(root / file_path)
+                if pointer:
+                    matches.append(pointer)
+        return matches
+
+    def _collect_lfs_patterns(self) -> List[str]:
+        patterns: List[str] = []
+        attr_path = self.path / ".gitattributes"
+        if not attr_path.exists():
+            return patterns
+        try:
+            lines = attr_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return patterns
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split()
+            if len(parts) < 2:
+                continue
+            pattern, *attributes = parts
+            if any("filter=lfs" in attribute for attribute in attributes):
+                patterns.append(pattern)
+        return patterns
+
+    def _read_pointer_metadata(self, pointer_path: Path) -> Optional[dict]:
+        try:
+            text = pointer_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        if "git-lfs" not in text:
+            return None
+        oid = None
+        size_value: Optional[int] = None
+        for line in text.splitlines():
+            if line.startswith("oid "):
+                oid = line.split("sha256:", 1)[-1].strip()
+            if line.startswith("size "):
+                try:
+                    size_value = int(line.split()[1])
+                except (IndexError, ValueError):
+                    size_value = None
+        if not oid:
+            return None
+        root = Path(self.repo.working_tree_dir)
+        relative_path = pointer_path.relative_to(root)
+        return {
+            "path": str(relative_path),
+            "oid": oid,
+            "size": size_value,
+            "tracked": True,
+            "present": False,
+        }
+
+    def fetch_lfs_file(self, path: str) -> dict:
+        env = self._build_git_env()
+        try:
+            subprocess.run(
+                ["git", "lfs", "pull", "--include", path, "--exclude", ""],
+                cwd=self.path,
+                check=True,
+                capture_output=True,
+                env=env,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("Git LFS is not installed on the server") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else exc.stderr
+            message = stderr or "Failed to fetch LFS file"
+            raise RuntimeError(message) from exc
+
+        binary = self.read_file_bytes(path)
+        encoded = base64.b64encode(binary).decode("ascii")
+        return {
+            "path": path,
+            "encoding": "base64",
+            "content": encoded,
+            "size": len(binary),
+        }
+
     def commit(self, message: str, author_name: str, author_email: str) -> str:
         author = Actor(author_name, author_email)
         commit = self.repo.index.commit(message, author=author, committer=author)
@@ -252,12 +426,20 @@ class GitRepo:
 
     def push(self) -> bool:
         remote = self.get_default_remote()
-        results = remote.push()
+        env = self._build_git_env()
+        if env:
+            results = remote.push(env=env)
+        else:
+            results = remote.push()
         return bool(results)
 
     def fetch(self) -> None:
         remote = self.get_default_remote()
-        remote.fetch()
+        env = self._build_git_env()
+        if env:
+            remote.fetch(env=env)
+        else:
+            remote.fetch()
 
     def merge_or_rebase(self, from_branch: str, strategy: str) -> str:
         if strategy == "merge":

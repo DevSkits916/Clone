@@ -8,9 +8,12 @@ PocketGit is a lightweight FastAPI backend that exposes a simple Git workspace o
 - List repositories and inspect ahead/behind status.
 - Browse directories and read/write files.
 - Stage, unstage, and commit changes.
+- Batch offline edits with `/offline-commit` for automatic staging.
 - Push, fetch, merge, and rebase.
 - Manage branches.
 - Search across tracked files.
+- Inspect Git LFS tracked files and fetch binary blobs on demand.
+- Manage SSH deploy keys for cloning/pushing to `git@` remotes.
 
 > **Important:** PocketGit has **no authentication**. Do not expose it publicly without additional protection.
 
@@ -33,10 +36,14 @@ pocketgit/
 │   │   ├── search.py
 │   │   ├── stage.py
 │   │   ├── status.py
-│   │   └── tree.py
+│   │   ├── tree.py
+│   │   ├── keys.py
+│   │   ├── lfs.py
+│   │   └── offline_commit.py
 │   ├── services/
 │   │   ├── git_repo.py
-│   │   └── repo_manager.py
+│   │   ├── repo_manager.py
+│   │   └── ssh_keys.py
 │   └── utils/
 │       ├── diff_utils.py
 │       └── fs_utils.py
@@ -201,13 +208,74 @@ curl -X POST http://127.0.0.1:8000/repo/<REPO_ID>/merge \
   -d '{"fromBranch": "origin/main", "strategy": "merge"}'
 ```
 
-### 18. Search tracked files
+### 18. Batch offline edits and create a commit
+
+```bash
+curl -X POST http://127.0.0.1:8000/repo/<REPO_ID>/offline-commit \
+  -H "Content-Type: application/json" \
+  -d '{
+        "message": "Synced offline edits",
+        "authorName": "Offline User",
+        "authorEmail": "offline@example.com",
+        "changes": [
+          {"path": "README.md", "content": "Updated while offline"}
+        ]
+      }'
+```
+
+### 19. List Git LFS tracked files
+
+```bash
+curl http://127.0.0.1:8000/repo/<REPO_ID>/lfs/list
+```
+
+### 20. Fetch a Git LFS binary blob
+
+```bash
+curl "http://127.0.0.1:8000/repo/<REPO_ID>/lfs/fetch?path=media/video.mp4"
+```
+
+The response payload contains a base64-encoded blob and its size.
+
+### 21. SSH key management
+
+List stored keys:
+
+```bash
+curl http://127.0.0.1:8000/keys/list
+```
+
+Upload a new private key (PEM):
+
+```bash
+curl -X POST http://127.0.0.1:8000/keys/upload \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Render deploy", "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n..."}'
+```
+
+Delete a key:
+
+```bash
+curl -X DELETE http://127.0.0.1:8000/keys/<KEY_ID>
+```
+
+Uploaded keys are stored under `pocketgit/keys/` with filesystem permissions set to `600`. When cloning or pushing to `git@...`, set `sshKeyId` in the `/clone` payload (or via the UI) to use a stored key.
+
+## Offline editing workflow
+
+The frontend caches files in IndexedDB when you view them. Edits made while offline are written to the cache and queued in the backend via `/offline-commit` once the connection is restored. You can also trigger the sync manually by calling `/repo/<REPO_ID>/offline-commit` or using the "Sync Offline Changes" button in the UI. Pending edits are staged automatically before the commit is created.
+
+## Git LFS support
+
+PocketGit detects `.gitattributes` entries and the output of `git lfs ls-files`. Use `/repo/<REPO_ID>/lfs/list` to see tracked objects and `/repo/<REPO_ID>/lfs/fetch` to download the binary content. The backend invokes `git lfs pull` as needed before streaming the file back to the client.
+
+### 22. Search tracked files
 
 ```bash
 curl "http://127.0.0.1:8000/repo/<REPO_ID>/search?q=TODO"
 ```
 
-### 19. Import a zipped project folder
+### 23. Import a zipped project folder
 
 ```bash
 curl -X POST http://127.0.0.1:8000/import-zip \
@@ -215,7 +283,7 @@ curl -X POST http://127.0.0.1:8000/import-zip \
   -F "file=@/path/to/folder.zip"
 ```
 
-### 20. Suggest a commit message from staged changes
+### 24. Suggest a commit message from staged changes
 
 ```bash
 curl -X POST http://127.0.0.1:8000/repo/<REPO_ID>/suggest-commit-message
