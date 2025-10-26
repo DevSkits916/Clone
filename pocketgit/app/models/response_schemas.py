@@ -124,3 +124,26 @@ class LFSFetchResponse(BaseModel):
     encoding: str
     content: str
     size: int
+
+
+class SecretInfo(BaseModel):
+    name: str
+    value: str
+
+
+class SecretListResponse(BaseModel):
+    secrets: List[SecretInfo]
+
+
+class ActivityEvent(BaseModel):
+    ts: str
+    action: str
+    branch: Optional[str] = None
+    msg: Optional[str] = None
+    hash: Optional[str] = None
+    user: Optional[str] = None
+    details: Optional[dict] = None
+
+
+class ActivityResponse(BaseModel):
+    events: List[ActivityEvent]

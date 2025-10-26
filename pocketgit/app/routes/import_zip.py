@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Optional, Set
 from zipfile import BadZipFile, ZipFile
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from git import Actor, GitCommandError, Repo
 
 from ..models.response_schemas import CloneResponse
+from ..services.activity_log import activity_logger
+from ..services.auth_service import get_current_user
 from ..services.git_repo import GitRepo, RepoMetadata
 from ..services.repo_manager import repo_manager
 
@@ -91,6 +93,7 @@ def _detect_remote_url(repo: Repo) -> Optional[str]:
 async def import_zip(
     file: UploadFile = File(...),
     repo_name: Optional[str] = Form(None),
+    current_user: str = Depends(get_current_user),
 ) -> CloneResponse:
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing filename")
@@ -160,9 +163,17 @@ async def import_zip(
         shutil.rmtree(target_path, ignore_errors=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
-    return CloneResponse(
+    response = CloneResponse(
         repoId=git_repo.repo_id,
         name=git_repo.get_name(),
         defaultBranch=metadata.default_branch or git_repo.get_current_branch() or "",
         branches=branches,
     )
+    activity_logger.append(
+        git_repo.repo_id,
+        "import_zip",
+        current_user,
+        branch=response.defaultBranch or None,
+        name=response.name,
+    )
+    return response

@@ -14,8 +14,11 @@ PocketGit is a lightweight FastAPI backend that exposes a simple Git workspace o
 - Search across tracked files.
 - Inspect Git LFS tracked files and fetch binary blobs on demand.
 - Manage SSH deploy keys for cloning/pushing to `git@` remotes.
+- Protect write operations with JWT authentication.
+- Store encrypted per-repository secrets for remote credentials.
+- Record every write action in an append-only activity log.
 
-> **Important:** PocketGit has **no authentication**. Do not expose it publicly without additional protection.
+All write endpoints require an `Authorization: Bearer <token>` header issued by the built-in auth system.
 
 ## Project Structure
 
@@ -27,27 +30,36 @@ pocketgit/
 │   │   ├── request_schemas.py
 │   │   └── response_schemas.py
 │   ├── routes/
+│   │   ├── activity.py
+│   │   ├── auth.py
 │   │   ├── branch.py
 │   │   ├── clone.py
 │   │   ├── commit.py
 │   │   ├── file.py
+│   │   ├── keys.py
+│   │   ├── lfs.py
+│   │   ├── offline_commit.py
 │   │   ├── pushpull.py
 │   │   ├── repos.py
 │   │   ├── search.py
+│   │   ├── secrets.py
 │   │   ├── stage.py
 │   │   ├── status.py
-│   │   ├── tree.py
-│   │   ├── keys.py
-│   │   ├── lfs.py
-│   │   └── offline_commit.py
+│   │   └── tree.py
 │   ├── services/
+│   │   ├── activity_log.py
+│   │   ├── auth_service.py
 │   │   ├── git_repo.py
 │   │   ├── repo_manager.py
+│   │   ├── secret_manager.py
 │   │   └── ssh_keys.py
 │   └── utils/
 │       ├── diff_utils.py
 │       └── fs_utils.py
+├── auth/
+│   └── users.json
 ├── repos/
+├── secrets/
 ├── requirements.txt
 ├── Dockerfile
 ├── render.yaml
@@ -77,9 +89,54 @@ pocketgit/
 
    The API will be available at `http://127.0.0.1:8000`.
 
+## Authentication
+
+PocketGit secures every modifying endpoint with JWT bearer tokens. Create accounts using `/auth/register` and log in with `/auth/login`.
+Passwords are hashed with bcrypt and stored in `auth/users.json`.
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "s3cret"}'
+
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "s3cret"}' | jq -r .token)
+```
+
+Set `POCKETGIT_JWT_SECRET` to override the signing key (defaults to a development secret).
+Include `Authorization: Bearer $TOKEN` on every write request.
+
+## Encrypted Secrets Vault
+
+Use `/repo/{repoId}/secrets` to persist encrypted credentials (AES-256 via `cryptography`).
+Secrets live in the `secrets/` directory. Provide `POCKETGIT_SECRET_KEY` (32 bytes, URL-safe Base64). If omitted, a key is generated and cached on disk.
+
+```bash
+curl -X POST http://127.0.0.1:8000/repo/$REPO_ID/secrets \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "GIT_TOKEN", "value": "ghp_example"}'
+
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/repo/$REPO_ID/secrets
+```
+
+Stored credentials are automatically injected into HTTPS push/fetch operations when possible.
+
+## Activity Log
+
+Every write action appends an entry to `repos/<repoId>/activity.log`. Fetch recent events with:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/repo/$REPO_ID/activity
+```
+
+Entries are newline-delimited JSON containing timestamps, actions, branches, commit hashes, and any relevant metadata.
+
 ## API Reference (curl examples)
 
 Replace `<REPO_ID>` with the identifier returned from `/clone`.
+All examples that modify repositories must include `-H "Authorization: Bearer $TOKEN"`.
 
 ### 1. Clone a repository
 

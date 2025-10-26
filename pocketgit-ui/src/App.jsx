@@ -5,7 +5,16 @@ import EditorPanel from './components/EditorPanel.jsx';
 import GitPanel from './components/GitPanel.jsx';
 import SearchPanel from './components/SearchPanel.jsx';
 import SSHKeysPanel from './components/SSHKeysPanel.jsx';
-import { OFFLINE_EVENT, getReposWithOfflineChanges, syncAllOfflineChanges } from './hooks/useBackend.js';
+import LoginScreen from './components/LoginScreen.jsx';
+import {
+  OFFLINE_EVENT,
+  clearAuthToken,
+  getAuthToken,
+  getReposWithOfflineChanges,
+  onUnauthorized,
+  setAuthToken as storeAuthToken,
+  syncAllOfflineChanges
+} from './hooks/useBackend.js';
 
 const MOBILE_BREAKPOINT = 900;
 
@@ -19,7 +28,32 @@ const TABS = [
 
 const HTML_EXTENSIONS = ['.html', '.htm'];
 
+function decodeTokenUsername(token) {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    let json = '';
+    if (typeof atob === 'function') {
+      json = atob(padded);
+    } else if (typeof Buffer !== 'undefined') {
+      json = Buffer.from(padded, 'base64').toString('utf-8');
+    }
+    if (!json) {
+      return null;
+    }
+    const data = JSON.parse(json);
+    return data?.sub || null;
+  } catch (error) {
+    return null;
+  }
+}
+
 export default function App() {
+  const [authToken, setAuthTokenState] = useState(() => getAuthToken());
+  const [currentUser, setCurrentUser] = useState(() => decodeTokenUsername(getAuthToken()));
   const [activeRepoId, setActiveRepoId] = useState(null);
   const [activeFilePath, setActiveFilePath] = useState(null);
   const [currentPath, setCurrentPath] = useState('');
@@ -31,7 +65,19 @@ export default function App() {
   const [syncError, setSyncError] = useState(null);
   const [pendingOfflineRepos, setPendingOfflineRepos] = useState([]);
 
+  useEffect(() => {
+    const unsubscribe = onUnauthorized(() => {
+      setAuthTokenState(null);
+      setCurrentUser(null);
+    });
+    return unsubscribe;
+  }, []);
+
   const refreshOfflineState = useCallback(async () => {
+    if (!authToken) {
+      setPendingOfflineRepos([]);
+      return [];
+    }
     try {
       const repos = await getReposWithOfflineChanges();
       setPendingOfflineRepos(repos);
@@ -39,10 +85,13 @@ export default function App() {
     } catch (error) {
       return [];
     }
-  }, []);
+  }, [authToken]);
 
   const syncOfflineEdits = useCallback(
     async (commitMessage = 'Offline edits sync', force = false) => {
+      if (!authToken) {
+        return;
+      }
       if (!force && !isOnline) {
         return;
       }
@@ -62,8 +111,25 @@ export default function App() {
         refreshOfflineState();
       }
     },
-    [isOnline, refreshOfflineState]
+    [authToken, isOnline, refreshOfflineState]
   );
+
+  const handleLoginSuccess = useCallback(
+    ({ token, username }) => {
+      if (!token) return;
+      storeAuthToken(token);
+      setAuthTokenState(token);
+      setCurrentUser(username || decodeTokenUsername(token));
+    },
+    []
+  );
+
+  const handleLogout = useCallback(() => {
+    clearAuthToken();
+    setAuthTokenState(null);
+    setCurrentUser(null);
+    setPendingOfflineRepos([]);
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
@@ -89,6 +155,9 @@ export default function App() {
   }, [syncOfflineEdits]);
 
   useEffect(() => {
+    if (!authToken) {
+      return;
+    }
     refreshOfflineState().then((repos) => {
       if (repos.length && isOnline) {
         syncOfflineEdits('Offline edits sync');
@@ -101,7 +170,7 @@ export default function App() {
     return () => {
       window.removeEventListener(OFFLINE_EVENT, handleOfflineEvent);
     };
-  }, [isOnline, refreshOfflineState, syncOfflineEdits]);
+  }, [authToken, isOnline, refreshOfflineState, syncOfflineEdits]);
 
   useEffect(() => {
     setCurrentPath('');
@@ -116,6 +185,10 @@ export default function App() {
       setEditorMode('editor');
     }
   }, [activeFilePath, editorMode]);
+
+  if (!authToken) {
+    return <LoginScreen onLogin={handleLoginSuccess} />;
+  }
 
   const layoutClass = useMemo(() => (isMobile ? 'app-shell mobile' : 'app-shell desktop'), [isMobile]);
 
@@ -209,7 +282,15 @@ export default function App() {
     <div className={layoutClass}>
       <header className="app-header">
         <h1>PocketGit</h1>
-        {activeRepoId && <span className="repo-id">Repo: {activeRepoId}</span>}
+        <div className="header-meta">
+          {activeRepoId && <span className="repo-id">Repo: {activeRepoId}</span>}
+          <div className="auth-controls">
+            {currentUser && <span className="user-badge">Signed in as {currentUser}</span>}
+            <button type="button" className="secondary" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
+        </div>
       </header>
       {bannerMessage && (
         <div

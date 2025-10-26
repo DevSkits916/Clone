@@ -14,6 +14,7 @@ from git import Actor, GitCommandError, Repo
 
 from ..utils.diff_utils import combine_diffs
 from ..utils.fs_utils import InvalidPathError, ensure_within_repo
+from .secret_manager import secret_manager
 from .ssh_keys import ssh_key_manager
 
 
@@ -161,6 +162,33 @@ class GitRepo:
         if remote_url.startswith("git@") or remote_url.startswith("ssh://"):
             return ssh_key_manager.get_env_for_key(metadata.ssh_key_id)
         return None
+
+    def _get_remote_url(self, remote) -> Optional[str]:
+        try:
+            urls = list(remote.urls)
+        except Exception:
+            urls = []
+        if urls:
+            return urls[0]
+        metadata = self.read_metadata()
+        if metadata and metadata.remote_url:
+            return metadata.remote_url
+        return None
+
+    def _get_http_auth_url(self, remote=None) -> Optional[str]:
+        base_url = None
+        if remote is not None:
+            base_url = self._get_remote_url(remote)
+        if not base_url:
+            metadata = self.read_metadata()
+            if metadata and metadata.remote_url:
+                base_url = metadata.remote_url
+        if not base_url or not base_url.startswith(("http://", "https://")):
+            return None
+        credentials = secret_manager.get_http_credentials(self.repo_id)
+        if not credentials:
+            return None
+        return self._apply_auth_to_url(base_url, credentials)
 
     def get_name(self) -> str:
         metadata = self.read_metadata()
@@ -427,15 +455,22 @@ class GitRepo:
     def push(self) -> bool:
         remote = self.get_default_remote()
         env = self._build_git_env()
-        if env:
-            results = remote.push(env=env)
-        else:
-            results = remote.push()
+        if not env:
+            auth_url = self._get_http_auth_url(remote)
+            if auth_url:
+                result = self.repo.git.push(auth_url)
+                return bool(result)
+        results = remote.push(env=env) if env else remote.push()
         return bool(results)
 
     def fetch(self) -> None:
         remote = self.get_default_remote()
         env = self._build_git_env()
+        if not env:
+            auth_url = self._get_http_auth_url(remote)
+            if auth_url:
+                self.repo.git.fetch(auth_url)
+                return
         if env:
             remote.fetch(env=env)
         else:

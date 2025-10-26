@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from .routes.activity import router as activity_router
+from .routes.auth import router as auth_router
 from .routes.clone import router as clone_router
 from .routes.repos import router as repos_router
 from .routes.branch import router as branch_router
@@ -16,10 +18,12 @@ from .routes.suggest_commit import router as suggest_commit_router
 from .routes.offline_commit import router as offline_commit_router
 from .routes.lfs import router as lfs_router
 from .routes.keys import router as keys_router
+from .routes.secrets import router as secrets_router
 
 
 app = FastAPI(title="PocketGit", version="1.0.0")
 
+app.include_router(auth_router)
 app.include_router(clone_router)
 app.include_router(repos_router)
 app.include_router(branch_router)
@@ -36,3 +40,5 @@ app.include_router(suggest_commit_router)
 app.include_router(offline_commit_router)
 app.include_router(lfs_router)
 app.include_router(keys_router)
+app.include_router(secrets_router)
+app.include_router(activity_router)

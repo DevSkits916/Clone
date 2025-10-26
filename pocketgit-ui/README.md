@@ -31,6 +31,22 @@ All backend requests use the `API_BASE_URL` defined in `src/config.js`. Update t
 export const API_BASE_URL = "http://localhost:8000";
 ```
 
+## Sign in
+
+The UI now requires a valid JWT from the backend before any write action.
+Use the login form to authenticate against `/auth/login` — credentials are stored in the backend's `auth/users.json`.
+Tokens persist in `localStorage`, and an invalid or expired token automatically redirects back to the login screen.
+
+## Manage encrypted secrets
+
+The **Git** panel includes a **Secrets** tab for adding, listing, and deleting values stored in the backend vault.
+Secrets are encrypted at rest and surfaced with masked values. Newly created entries become available to push/fetch operations immediately.
+
+## Activity timeline
+
+The **Activity** tab displays a chronological feed of commits, pushes, merges, file edits, and other write operations.
+Events are fetched from `GET /repo/{repoId}/activity` and update automatically after each action.
+
 ## Import projects from a ZIP archive
 
 From the **Repositories** panel, click **Import .zip** to upload a zipped folder. Provide an optional display name and PocketGit will unpack the archive, initialise a Git repository (if needed), and select it automatically once the import finishes.

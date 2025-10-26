@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List, Set
 
-from fastapi import APIRouter, HTTPException, Path as FastAPIPath, status
+from fastapi import APIRouter, Depends, HTTPException, Path as FastAPIPath, status
 
 from ..services.repo_manager import repo_manager
+from ..services.auth_service import get_optional_current_user
 
 
 router = APIRouter()
@@ -151,7 +152,10 @@ def _build_summary(paths: List[str], categories: Set[str], change_types: Set[str
 
 
 @router.post("/repo/{repo_id}/suggest-commit-message")
-def suggest_commit_message(repo_id: str = FastAPIPath(..., alias="repoId")) -> dict:
+def suggest_commit_message(
+    repo_id: str = FastAPIPath(..., alias="repoId"),
+    current_user: str | None = Depends(get_optional_current_user),
+) -> dict:
     repo = repo_manager.get_repo(repo_id)
     diffs = repo.get_staged_diffs()
     if not diffs:
