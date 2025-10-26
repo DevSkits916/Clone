@@ -10,6 +10,9 @@ from .routes.stage import router as stage_router
 from .routes.commit import router as commit_router
 from .routes.pushpull import router as pushpull_router
 from .routes.search import router as search_router
+from .routes.import_zip import router as import_zip_router
+from .routes.shortcut import router as shortcut_router
+from .routes.suggest_commit import router as suggest_commit_router
 
 
 app = FastAPI(title="PocketGit", version="1.0.0")
@@ -24,3 +27,6 @@ app.include_router(stage_router)
 app.include_router(commit_router)
 app.include_router(pushpull_router)
 app.include_router(search_router)
+app.include_router(import_zip_router)
+app.include_router(shortcut_router)
+app.include_router(suggest_commit_router)

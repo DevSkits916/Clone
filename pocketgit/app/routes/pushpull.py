@@ -15,7 +15,7 @@ def push(repo_id: str = Path(..., alias="repoId")) -> PushResponse:
     repo = repo_manager.get_repo(repo_id)
     try:
         pushed = repo.push()
-    except GitCommandError as exc:
+    except (GitCommandError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PushResponse(ok=True, pushed=pushed)
 
@@ -25,7 +25,7 @@ def fetch(repo_id: str = Path(..., alias="repoId")) -> OkResponse:
     repo = repo_manager.get_repo(repo_id)
     try:
         repo.fetch()
-    except GitCommandError as exc:
+    except (GitCommandError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return OkResponse()
 

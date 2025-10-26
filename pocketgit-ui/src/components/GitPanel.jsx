@@ -9,10 +9,12 @@ import {
   getStatus,
   merge,
   push,
+  suggestCommitMessage,
   stageFile,
   switchBranch,
   unstageFile
 } from '../hooks/useBackend.js';
+import { API_BASE_URL } from '../config.js';
 
 function normalizeBranches(data) {
   if (!Array.isArray(data)) return [];
@@ -39,6 +41,8 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
   const [mergeStrategy, setMergeStrategy] = useState('merge');
   const [loadingMessage, setLoadingMessage] = useState('');
   const [error, setError] = useState(null);
+  const [lastSuggestion, setLastSuggestion] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
 
   const loadAll = async () => {
     if (!activeRepoId) {
@@ -68,6 +72,12 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
     setError(null);
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRepoId]);
+
+  useEffect(() => {
+    setLastSuggestion('');
+    setCommitMessage('');
+    setSuggesting(false);
   }, [activeRepoId]);
 
   const runAction = async (fn, message) => {
@@ -106,6 +116,23 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
   }, 'Creating branch…');
   const handleDeleteBranch = () => runAction(() => deleteBranch(activeRepoId, { name: selectedBranch }), 'Deleting branch…');
   const handleMerge = () => runAction(() => merge(activeRepoId, { fromBranch: mergeFrom, strategy: mergeStrategy }), 'Merging…');
+  const handleSuggest = async () => {
+    if (!activeRepoId) return;
+    setSuggesting(true);
+    setError(null);
+    try {
+      const result = await suggestCommitMessage(activeRepoId);
+      const suggestion = result?.suggestion || '';
+      if (!commitMessage.trim()) {
+        setCommitMessage(suggestion);
+      }
+      setLastSuggestion(suggestion);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const diffLines = diffText ? diffText.split('\n') : [];
 
@@ -183,9 +210,18 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
       <section className="git-section-block">
         <h3>Commit</h3>
         <form onSubmit={(event) => { event.preventDefault(); handleCommit(); }} className="commit-form">
-          <label>
-            Message
-            <textarea value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} required rows={3} />
+          <label className="commit-message-label">
+            <span>Message</span>
+            <div className="commit-message-input-row">
+              <textarea value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} required rows={3} />
+              <button type="button" onClick={handleSuggest} disabled={suggesting}>
+                {suggesting ? 'Suggesting…' : 'Suggest'}
+              </button>
+            </div>
+            {suggesting && <p className="muted suggestion-hint">Generating suggestion…</p>}
+            {lastSuggestion && !suggesting && commitMessage.trim() !== lastSuggestion.trim() && (
+              <p className="muted suggestion-hint">Suggestion: {lastSuggestion}</p>
+            )}
           </label>
           <label>
             Author name
@@ -220,6 +256,11 @@ export default function GitPanel({ activeRepoId, onOpenFile }) {
           <button type="submit">Merge/Rebase</button>
         </form>
       </section>
+
+      <section className="git-section-block">
+        <h3>Automation URLs</h3>
+        <AutomationLinks repoId={activeRepoId} />
+      </section>
     </div>
   );
 }
@@ -243,5 +284,55 @@ function StatusList({ items = [], actionLabel, onAction, onOpenFile }) {
         );
       })}
     </ul>
+  );
+}
+
+function AutomationLinks({ repoId }) {
+  if (!repoId) return null;
+  const base = API_BASE_URL.replace(/\/$/, '');
+  const pushUrl = `${base}/shortcut/push?repoId=${encodeURIComponent(repoId)}`;
+  const commitUrl = `${base}/shortcut/commit-and-push?repoId=${encodeURIComponent(repoId)}&msg=&name=${encodeURIComponent('Your Name')}&email=${encodeURIComponent('you@example.com')}`;
+  const fetchUrl = `${base}/shortcut/fetch?repoId=${encodeURIComponent(repoId)}`;
+
+  const items = [
+    { label: 'Push current branch', value: pushUrl },
+    { label: 'Commit & push (fill msg)', value: commitUrl },
+    { label: 'Fetch from remote', value: fetchUrl }
+  ];
+
+  return (
+    <div className="automation-list">
+      {items.map((item) => (
+        <AutomationUrlField key={item.label} label={item.label} value={item.value} />
+      ))}
+    </div>
+  );
+}
+
+function AutomationUrlField({ label, value }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!navigator?.clipboard?.writeText) {
+      setCopied(false);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <label className="automation-item">
+      <span>{label}</span>
+      <div className="automation-field">
+        <input type="text" value={value} readOnly onFocus={(event) => event.target.select()} />
+        <button type="button" onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</button>
+      </div>
+    </label>
   );
 }

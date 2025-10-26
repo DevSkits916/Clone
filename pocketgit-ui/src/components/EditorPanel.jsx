@@ -33,6 +33,7 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
   const editorContainerRef = useRef(null);
   const editorInstanceRef = useRef(null);
   const iframeRef = useRef(null);
+  const logEndRef = useRef(null);
   const isUpdatingRef = useRef(false);
 
   useEffect(() => {
@@ -120,6 +121,10 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
 
   useEffect(() => {
     const detach = attachConsoleListener((payload) => {
+      if (payload.method === 'clear') {
+        setPreviewLogs([]);
+        return;
+      }
       setPreviewLogs((prev) => [...prev, { method: payload.method, text: payload.args.join(' ') }]);
     });
     return detach;
@@ -132,6 +137,12 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
     iframeRef.current.srcdoc = buildPreviewDocument(content ?? '');
     setPreviewLogs([]);
   }, [mode, content, filePath]);
+
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [previewLogs]);
 
   useEffect(() => () => {
     if (editorInstanceRef.current) {
@@ -208,9 +219,27 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
             ref={iframeRef}
             sandbox="allow-scripts"
           />
-          <form className="preview-console" onSubmit={handleRunScript}>
+          <div className="preview-console-panel">
+            <div className="console-header">
+              <span>Console Output</span>
+              <button type="button" onClick={() => setPreviewLogs([])}>Clear</button>
+            </div>
+            <div className="console-log">
+              {previewLogs.length === 0 ? (
+                <p className="muted">Console messages will appear here.</p>
+              ) : (
+                previewLogs.map((log, index) => (
+                  <div key={index} className={`log-line ${log.method}`}>
+                    <span className="log-method">{log.method}:</span> {log.text}
+                  </div>
+                ))
+              )}
+              <div ref={logEndRef} />
+            </div>
+          </div>
+          <form className="preview-console-input" onSubmit={handleRunScript}>
             <label>
-              Console
+              Run JavaScript in preview
               <div className="console-input-row">
                 <input
                   type="text"
@@ -221,13 +250,6 @@ export default function EditorPanel({ activeRepoId, filePath, mode, onModeChange
                 <button type="submit">Run</button>
               </div>
             </label>
-            <div className="console-log">
-              {previewLogs.map((log, index) => (
-                <div key={index} className={`log-line ${log.method}`}>
-                  <span className="log-method">{log.method}:</span> {log.text}
-                </div>
-              ))}
-            </div>
           </form>
         </div>
       )}

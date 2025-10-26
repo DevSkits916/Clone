@@ -17,6 +17,11 @@
   gap: 0.5rem;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .panel-header h2 {
   margin: 0;
   font-size: 1rem;
@@ -176,7 +181,19 @@ textarea {
   background: white;
 }
 
-.preview-console {
+.preview-console-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-console-input {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -280,6 +297,50 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.commit-message-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.commit-message-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.commit-message-input-row textarea {
+  flex: 1;
+}
+
+.commit-message-input-row button {
+  align-self: flex-start;
+}
+
+.suggestion-hint {
+  font-size: 0.8rem;
+}
+
+.automation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.automation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.automation-field {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.automation-field input {
+  flex: 1;
 }
 
 .sync-buttons {

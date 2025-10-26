@@ -16,23 +16,36 @@ from ..utils.fs_utils import InvalidPathError, ensure_within_repo
 @dataclass
 class RepoMetadata:
     repo_id: str
-    remote_url: str
+    remote_url: Optional[str]
     default_branch: Optional[str]
+    name: Optional[str] = None
 
     @classmethod
     def from_file(cls, path: Path, repo_id: str) -> "RepoMetadata | None":
         if not path.exists():
             return None
         data = json.loads(path.read_text())
-        return cls(repo_id=repo_id, remote_url=data.get("remote"), default_branch=data.get("default_branch"))
+        return cls(
+            repo_id=repo_id,
+            remote_url=data.get("remote"),
+            default_branch=data.get("default_branch"),
+            name=data.get("name"),
+        )
 
     def to_file(self, path: Path) -> None:
         payload = {
             "repoId": self.repo_id,
             "remote": self.remote_url,
             "default_branch": self.default_branch,
+            "name": self.name,
         }
         path.write_text(json.dumps(payload, indent=2))
+        git_repo_cls = globals().get("GitRepo")
+        if git_repo_cls:
+            try:
+                git_repo_cls.ensure_metadata_ignored(path.parent)
+            except OSError:
+                pass
 
 
 class GitRepo:
@@ -81,6 +94,25 @@ class GitRepo:
         metadata.to_file(target_path / cls.METADATA_FILENAME)
         return cls(repo_id, base_path)
 
+    @classmethod
+    def ensure_metadata_ignored(cls, repo_path: Path) -> None:
+        exclude_path = repo_path / ".git" / "info" / "exclude"
+        try:
+            exclude_path.parent.mkdir(parents=True, exist_ok=True)
+            existing = ""
+            if exclude_path.exists():
+                existing = exclude_path.read_text(encoding="utf-8")
+                lines = {line.strip() for line in existing.splitlines() if line.strip()}
+                if cls.METADATA_FILENAME in lines:
+                    return
+            with exclude_path.open("a", encoding="utf-8") as handle:
+                if existing and not existing.endswith("\n"):
+                    handle.write("\n")
+                handle.write(f"{cls.METADATA_FILENAME}\n")
+        except OSError:
+            # If we fail to write to the exclude file, continue without raising.
+            pass
+
     @staticmethod
     def _apply_auth_to_url(url: str, auth: Optional[dict]) -> str:
         if not auth:
@@ -96,7 +128,18 @@ class GitRepo:
         return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
 
     def get_name(self) -> str:
+        metadata = self.read_metadata()
+        if metadata and metadata.name:
+            return metadata.name
         return Path(self.repo.working_tree_dir).name
+
+    def get_default_remote(self):
+        if not self.repo.remotes:
+            raise ValueError("No remotes configured for this repository")
+        try:
+            return self.repo.remotes.origin
+        except AttributeError:
+            return self.repo.remotes[0]
 
     def get_current_branch(self) -> Optional[str]:
         if self.repo.head.is_detached:
@@ -149,20 +192,29 @@ class GitRepo:
         resolved_paths = [str(ensure_within_repo(root, p)) for p in paths]
         self.repo.index.add(resolved_paths)
 
+    def stage_all(self) -> None:
+        self.repo.git.add(A=True)
+
     def unstage(self, paths: Iterable[str]) -> None:
         root = Path(self.repo.working_tree_dir)
         resolved_paths = [str(ensure_within_repo(root, p)) for p in paths]
         if resolved_paths:
             self.repo.git.restore("--staged", *resolved_paths)
 
+    def get_staged_diffs(self):
+        if self.repo.head.is_valid():
+            return list(self.repo.index.diff("HEAD"))
+        return list(self.repo.index.diff(None, staged=True))
+
+    def has_staged_changes(self) -> bool:
+        if self.repo.head.is_valid():
+            return bool(self.repo.index.diff("HEAD"))
+        return bool(self.repo.index.entries)
+
     def get_status(self) -> dict:
         branch = self.get_current_branch()
         staged_entries = []
-        if self.repo.head.is_valid():
-            staged_diffs = self.repo.index.diff("HEAD")
-        else:
-            staged_diffs = self.repo.index.diff(None, staged=True)
-        for diff in staged_diffs:
+        for diff in self.get_staged_diffs():
             staged_entries.append({"path": diff.b_path or diff.a_path, "status": diff.change_type})
 
         unstaged_entries = []
@@ -199,12 +251,12 @@ class GitRepo:
         return commit.hexsha
 
     def push(self) -> bool:
-        remote = self.repo.remotes.origin
+        remote = self.get_default_remote()
         results = remote.push()
         return bool(results)
 
     def fetch(self) -> None:
-        remote = self.repo.remotes.origin
+        remote = self.get_default_remote()
         remote.fetch()
 
     def merge_or_rebase(self, from_branch: str, strategy: str) -> str:
