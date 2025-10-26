@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from git import GitCommandError
 
 from ..models.request_schemas import OfflineCommitRequest
 from ..models.response_schemas import OfflineCommitResponse
+from ..services.activity_log import activity_logger
+from ..services.auth_service import get_current_user
 from ..services.repo_manager import repo_manager
 from ..utils.fs_utils import InvalidPathError
 
@@ -15,7 +17,11 @@ DEFAULT_AUTHOR_EMAIL = "offline@pocketgit"
 
 
 @router.post("/repo/{repo_id}/offline-commit", response_model=OfflineCommitResponse)
-def offline_commit(payload: OfflineCommitRequest, repo_id: str = Path(..., alias="repoId")) -> OfflineCommitResponse:
+def offline_commit(
+    payload: OfflineCommitRequest,
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: str = Depends(get_current_user),
+) -> OfflineCommitResponse:
     repo = repo_manager.get_repo(repo_id)
 
     if not payload.changes:
@@ -28,8 +34,8 @@ def offline_commit(payload: OfflineCommitRequest, repo_id: str = Path(..., alias
     staged_paths: list[str] = []
     for path, content in latest_changes.items():
         try:
-            repo.write_file(path, content)
-            staged_paths.append(path)
+        repo.write_file(path, content)
+        staged_paths.append(path)
         except InvalidPathError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except OSError as exc:
@@ -52,4 +58,13 @@ def offline_commit(payload: OfflineCommitRequest, repo_id: str = Path(..., alias
     except GitCommandError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    activity_logger.append(
+        repo_id,
+        "offline_commit",
+        current_user,
+        branch=repo.get_current_branch(),
+        msg=message,
+        hash=commit_hash,
+        paths=staged_paths,
+    )
     return OfflineCommitResponse(ok=True, commitHash=commit_hash)

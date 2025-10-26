@@ -1,37 +1,62 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from git import GitCommandError
 
 from ..models.request_schemas import MergeRequest
 from ..models.response_schemas import MergeResponse, OkResponse, PushResponse
+from ..services.activity_log import activity_logger
+from ..services.auth_service import get_current_user
 from ..services.repo_manager import repo_manager
 
 router = APIRouter()
 
 
 @router.post("/repo/{repo_id}/push", response_model=PushResponse)
-def push(repo_id: str = Path(..., alias="repoId")) -> PushResponse:
+def push(
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: str = Depends(get_current_user),
+) -> PushResponse:
     repo = repo_manager.get_repo(repo_id)
     try:
         pushed = repo.push()
     except (GitCommandError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    activity_logger.append(
+        repo_id,
+        "push",
+        current_user,
+        branch=repo.get_current_branch(),
+        pushed=pushed,
+    )
     return PushResponse(ok=True, pushed=pushed)
 
 
 @router.post("/repo/{repo_id}/fetch", response_model=OkResponse)
-def fetch(repo_id: str = Path(..., alias="repoId")) -> OkResponse:
+def fetch(
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: str = Depends(get_current_user),
+) -> OkResponse:
     repo = repo_manager.get_repo(repo_id)
     try:
         repo.fetch()
     except (GitCommandError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    activity_logger.append(
+        repo_id,
+        "fetch",
+        current_user,
+        branch=repo.get_current_branch(),
+    )
     return OkResponse()
 
 
 @router.post("/repo/{repo_id}/merge", response_model=MergeResponse)
-def merge_or_rebase(payload: MergeRequest, repo_id: str = Path(..., alias="repoId")) -> MergeResponse:
+def merge_or_rebase(
+    payload: MergeRequest,
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: str = Depends(get_current_user),
+) -> MergeResponse:
     repo = repo_manager.get_repo(repo_id)
     try:
         result = repo.merge_or_rebase(payload.fromBranch, payload.strategy)
@@ -39,4 +64,13 @@ def merge_or_rebase(payload: MergeRequest, repo_id: str = Path(..., alias="repoI
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    activity_logger.append(
+        repo_id,
+        "merge" if payload.strategy == "merge" else "rebase",
+        current_user,
+        branch=repo.get_current_branch(),
+        fromBranch=payload.fromBranch,
+        strategy=payload.strategy,
+        result=result,
+    )
     return MergeResponse(ok=True, result=result)

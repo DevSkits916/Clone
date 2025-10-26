@@ -17,6 +17,8 @@ import {
   unstageFile
 } from '../hooks/useBackend.js';
 import { API_BASE_URL } from '../config.js';
+import SecretsPanel from './SecretsPanel.jsx';
+import ActivityPanel from './ActivityPanel.jsx';
 
 function normalizeBranches(data) {
   if (!Array.isArray(data)) return [];
@@ -47,7 +49,13 @@ export default function GitPanel({ activeRepoId, onOpenFile, offlineQueued = fal
   const [suggesting, setSuggesting] = useState(false);
   const [offlinePending, setOfflinePending] = useState(offlineQueued);
   const [offlineSyncing, setOfflineSyncing] = useState(false);
+  const [activeSection, setActiveSection] = useState('git');
   const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
+  const gitTabs = [
+    { key: 'git', label: 'Git' },
+    { key: 'secrets', label: 'Secrets' },
+    { key: 'activity', label: 'Activity' }
+  ];
 
   const loadAll = async () => {
     if (!activeRepoId) {
@@ -77,6 +85,10 @@ export default function GitPanel({ activeRepoId, onOpenFile, offlineQueued = fal
     setError(null);
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRepoId]);
+
+  useEffect(() => {
+    setActiveSection('git');
   }, [activeRepoId]);
 
   useEffect(() => {
@@ -186,140 +198,187 @@ export default function GitPanel({ activeRepoId, onOpenFile, offlineQueued = fal
     <div className="panel git-panel">
       <div className="panel-header">
         <h2>Git</h2>
-        {status && (
-          <span className="ahead-behind">↑ {status.ahead} / ↓ {status.behind}</span>
-        )}
+        {status && <span className="ahead-behind">↑ {status.ahead} / ↓ {status.behind}</span>}
       </div>
-      {loadingMessage && <p>{loadingMessage}</p>}
-      {error && <p className="error-text">{error}</p>}
+      <div className="git-subnav">
+        {gitTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={tab.key === activeSection ? 'active' : ''}
+            onClick={() => setActiveSection(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      <section className="git-section-block">
-        <h3>Branches</h3>
-        <div className="branch-controls">
-          <label>
-            Current Branch
-            <select value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)}>
-              {branches.map((branch) => (
-                <option key={branch} value={branch}>{branch}</option>
-              ))}
-            </select>
-          </label>
-          <button onClick={handleSwitchBranch} disabled={!selectedBranch}>Switch branch</button>
-          <button onClick={handleDeleteBranch} className="danger" disabled={!selectedBranch || branches.length <= 1}>Delete branch</button>
-        </div>
-        <form className="new-branch" onSubmit={(event) => { event.preventDefault(); handleCreateBranch(); }}>
-          <label>
-            New branch name
-            <input value={newBranchName} onChange={(event) => setNewBranchName(event.target.value)} required />
-          </label>
-          <label>
-            From branch
-            <input value={newBranchFrom} onChange={(event) => setNewBranchFrom(event.target.value)} />
-          </label>
-          <button type="submit">Create branch</button>
-        </form>
-      </section>
+      {activeSection === 'git' && (
+        <>
+          {loadingMessage && <p>{loadingMessage}</p>}
+          {error && <p className="error-text">{error}</p>}
 
-      <section className="git-section-block">
-        <h3>Status</h3>
-        {!status && <p>Loading status…</p>}
-        {status && (
-          <div className="status-columns">
-            <div>
-              <h4>Staged</h4>
-              <StatusList items={status.staged} actionLabel="Unstage" onAction={handleUnstage} onOpenFile={onOpenFile} />
-            </div>
-            <div>
-              <h4>Unstaged</h4>
-              <StatusList items={status.unstaged} actionLabel="Stage" onAction={handleStage} onOpenFile={onOpenFile} />
-            </div>
-            <div>
-              <h4>Untracked</h4>
-              <StatusList items={status.untracked} actionLabel="Stage" onAction={handleStage} onOpenFile={onOpenFile} />
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="git-section-block">
-        <h3>Diff</h3>
-        <pre className="diff-viewer">
-          {diffLines.map((line, index) => {
-            let className = '';
-            if (line.startsWith('+')) className = 'diff-add';
-            if (line.startsWith('-')) className = 'diff-remove';
-            return <div key={index} className={className}>{line}</div>;
-          })}
-        </pre>
-      </section>
-
-      <section className="git-section-block">
-        <h3>Commit</h3>
-        <form onSubmit={(event) => { event.preventDefault(); handleCommit(); }} className="commit-form">
-          <label className="commit-message-label">
-            <span>Message</span>
-            <div className="commit-message-input-row">
-              <textarea value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} required rows={3} />
-              <button type="button" onClick={handleSuggest} disabled={suggesting}>
-                {suggesting ? 'Suggesting…' : 'Suggest'}
+          <section className="git-section-block">
+            <h3>Branches</h3>
+            <div className="branch-controls">
+              <label>
+                Current Branch
+                <select value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)}>
+                  {branches.map((branch) => (
+                    <option key={branch} value={branch}>
+                      {branch}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={handleSwitchBranch} disabled={!selectedBranch}>
+                Switch branch
+              </button>
+              <button
+                onClick={handleDeleteBranch}
+                className="danger"
+                disabled={!selectedBranch || branches.length <= 1}
+              >
+                Delete branch
               </button>
             </div>
-            {suggesting && <p className="muted suggestion-hint">Generating suggestion…</p>}
-            {lastSuggestion && !suggesting && commitMessage.trim() !== lastSuggestion.trim() && (
-              <p className="muted suggestion-hint">Suggestion: {lastSuggestion}</p>
+            <form
+              className="new-branch"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreateBranch();
+              }}
+            >
+              <label>
+                New branch name
+                <input value={newBranchName} onChange={(event) => setNewBranchName(event.target.value)} required />
+              </label>
+              <label>
+                From branch
+                <input value={newBranchFrom} onChange={(event) => setNewBranchFrom(event.target.value)} />
+              </label>
+              <button type="submit">Create branch</button>
+            </form>
+          </section>
+
+          <section className="git-section-block">
+            <h3>Status</h3>
+            {!status && <p>Loading status…</p>}
+            {status && (
+              <div className="status-columns">
+                <div>
+                  <h4>Staged</h4>
+                  <StatusList items={status.staged} actionLabel="Unstage" onAction={handleUnstage} onOpenFile={onOpenFile} />
+                </div>
+                <div>
+                  <h4>Unstaged</h4>
+                  <StatusList items={status.unstaged} actionLabel="Stage" onAction={handleStage} onOpenFile={onOpenFile} />
+                </div>
+                <div>
+                  <h4>Untracked</h4>
+                  <StatusList items={status.untracked} actionLabel="Stage" onAction={handleStage} onOpenFile={onOpenFile} />
+                </div>
+              </div>
             )}
-          </label>
-          <label>
-            Author name
-            <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} required />
-          </label>
-          <label>
-            Author email
-            <input type="email" value={authorEmail} onChange={(event) => setAuthorEmail(event.target.value)} required />
-          </label>
-          <button type="submit">Commit</button>
-        </form>
-      </section>
+          </section>
 
-      <section className="git-section-block">
-        <h3>Sync</h3>
-        <div className="sync-buttons">
-          <button onClick={handleFetch}>Fetch</button>
-          <button onClick={handlePush}>Push</button>
-          <button
-            onClick={handleSyncOffline}
-            disabled={!offlinePending || offlineSyncing || !isOnline}
-          >
-            {offlineSyncing ? 'Syncing offline…' : 'Sync Offline Changes'}
-          </button>
-        </div>
-        <p className="muted offline-hint">
-          {offlinePending
-            ? isOnline
-              ? 'Offline edits are waiting to sync.'
-              : 'Offline edits queued. Reconnect to sync.'
-            : 'All offline edits are synced.'}
-        </p>
-        <form className="merge-form" onSubmit={(event) => { event.preventDefault(); handleMerge(); }}>
-          <label>
-            From branch
-            <input value={mergeFrom} onChange={(event) => setMergeFrom(event.target.value)} placeholder="origin/main" required />
-          </label>
-          <label>
-            Strategy
-            <select value={mergeStrategy} onChange={(event) => setMergeStrategy(event.target.value)}>
-              <option value="merge">merge</option>
-              <option value="rebase">rebase</option>
-            </select>
-          </label>
-          <button type="submit">Merge/Rebase</button>
-        </form>
-      </section>
+          <section className="git-section-block">
+            <h3>Diff</h3>
+            <pre className="diff-viewer">
+              {diffLines.map((line, index) => {
+                let className = '';
+                if (line.startsWith('+')) className = 'diff-add';
+                if (line.startsWith('-')) className = 'diff-remove';
+                return (
+                  <div key={index} className={className}>
+                    {line}
+                  </div>
+                );
+              })}
+            </pre>
+          </section>
 
-      <section className="git-section-block">
-        <h3>Automation URLs</h3>
-        <AutomationLinks repoId={activeRepoId} />
-      </section>
+          <section className="git-section-block">
+            <h3>Commit</h3>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCommit();
+              }}
+              className="commit-form"
+            >
+              <label className="commit-message-label">
+                <span>Message</span>
+                <div className="commit-message-input-row">
+                  <textarea value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} required rows={3} />
+                  <button type="button" onClick={handleSuggest} disabled={suggesting}>
+                    {suggesting ? 'Suggesting…' : 'Suggest'}
+                  </button>
+                </div>
+                {suggesting && <p className="muted suggestion-hint">Generating suggestion…</p>}
+                {lastSuggestion && !suggesting && commitMessage.trim() !== lastSuggestion.trim() && (
+                  <p className="muted suggestion-hint">Suggestion: {lastSuggestion}</p>
+                )}
+              </label>
+              <label>
+                Author name
+                <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} required />
+              </label>
+              <label>
+                Author email
+                <input type="email" value={authorEmail} onChange={(event) => setAuthorEmail(event.target.value)} required />
+              </label>
+              <button type="submit">Commit</button>
+            </form>
+          </section>
+
+          <section className="git-section-block">
+            <h3>Sync</h3>
+            <div className="sync-buttons">
+              <button onClick={handleFetch}>Fetch</button>
+              <button onClick={handlePush}>Push</button>
+              <button onClick={handleSyncOffline} disabled={!offlinePending || offlineSyncing || !isOnline}>
+                {offlineSyncing ? 'Syncing offline…' : 'Sync Offline Changes'}
+              </button>
+            </div>
+            <p className="muted offline-hint">
+              {offlinePending
+                ? isOnline
+                  ? 'Offline edits are waiting to sync.'
+                  : 'Offline edits queued. Reconnect to sync.'
+                : 'All offline edits are synced.'}
+            </p>
+            <form
+              className="merge-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleMerge();
+              }}
+            >
+              <label>
+                From branch
+                <input value={mergeFrom} onChange={(event) => setMergeFrom(event.target.value)} placeholder="origin/main" required />
+              </label>
+              <label>
+                Strategy
+                <select value={mergeStrategy} onChange={(event) => setMergeStrategy(event.target.value)}>
+                  <option value="merge">merge</option>
+                  <option value="rebase">rebase</option>
+                </select>
+              </label>
+              <button type="submit">Merge/Rebase</button>
+            </form>
+          </section>
+
+          <section className="git-section-block">
+            <h3>Automation URLs</h3>
+            <AutomationLinks repoId={activeRepoId} />
+          </section>
+        </>
+      )}
+
+      {activeSection === 'secrets' && <SecretsPanel repoId={activeRepoId} />}
+      {activeSection === 'activity' && <ActivityPanel repoId={activeRepoId} />}
     </div>
   );
 }

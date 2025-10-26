@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Depends, Path
+from typing import Optional
 
 from ..models.response_schemas import DiffResponse, StatusEntry, StatusResponse
+from ..services.auth_service import get_optional_current_user
 from ..services.repo_manager import repo_manager
 
 router = APIRouter()
 
 
 @router.get("/repo/{repo_id}/status", response_model=StatusResponse)
-def get_status(repo_id: str = Path(..., alias="repoId")) -> StatusResponse:
+def get_status(
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: Optional[str] = Depends(get_optional_current_user),
+) -> StatusResponse:
     repo = repo_manager.get_repo(repo_id)
     data = repo.get_status()
     return StatusResponse(
@@ -23,7 +28,10 @@ def get_status(repo_id: str = Path(..., alias="repoId")) -> StatusResponse:
 
 
 @router.get("/repo/{repo_id}/diff", response_model=DiffResponse)
-def get_diff(repo_id: str = Path(..., alias="repoId")) -> DiffResponse:
+def get_diff(
+    repo_id: str = Path(..., alias="repoId"),
+    current_user: Optional[str] = Depends(get_optional_current_user),
+) -> DiffResponse:
     repo = repo_manager.get_repo(repo_id)
     diff = repo.get_diff()
     return DiffResponse(diff=diff)

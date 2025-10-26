@@ -76,3 +76,12 @@ class MergeRequest(BaseModel):
 
     def model_post_init(self, __context: object) -> None:  # type: ignore[override]
         self.validate_strategy()
+
+
+class SecretCreateRequest(BaseModel):
+    name: str
+    value: str
+
+
+class SecretDeleteRequest(BaseModel):
+    name: str

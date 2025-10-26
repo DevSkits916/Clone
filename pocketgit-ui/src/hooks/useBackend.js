@@ -9,12 +9,21 @@ import {
   getReposWithPendingChanges,
   hasPendingChanges,
   recordPendingChange,
-  registerBackgroundSync,
+  registerBackgroundSync
 } from '../utils/offlineStore.js';
 
-const jsonHeaders = {
-  'Content-Type': 'application/json'
-};
+const TOKEN_STORAGE_KEY = 'pocketgit:token';
+
+let authToken = null;
+try {
+  if (typeof localStorage !== 'undefined') {
+    authToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  }
+} catch (error) {
+  authToken = null;
+}
+
+const unauthorizedListeners = new Set();
 
 function isNavigatorOnline() {
   if (typeof navigator === 'undefined') {
@@ -39,28 +48,104 @@ function buildUrl(path) {
   return `${API_BASE_URL.replace(/\/$/, '')}${path}`;
 }
 
+export function getAuthToken() {
+  return authToken;
+}
+
+export function setAuthToken(token) {
+  authToken = token;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (token) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      } else {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+      }
+    }
+  } catch (error) {
+    // Ignore storage errors in non-browser environments.
+  }
+}
+
+export function clearAuthToken() {
+  setAuthToken(null);
+}
+
+export function onUnauthorized(callback) {
+  unauthorizedListeners.add(callback);
+  return () => unauthorizedListeners.delete(callback);
+}
+
+function notifyUnauthorized() {
+  clearAuthToken();
+  unauthorizedListeners.forEach((handler) => {
+    try {
+      handler();
+    } catch (error) {
+      // swallow listener errors
+    }
+  });
+}
+
+async function request(path, options = {}) {
+  const { skipAuth = false, rawResponse = false, ...rest } = options;
+  const headers = new Headers(rest.headers || {});
+
+  if (rest.body != null && !(rest.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (!skipAuth) {
+    if (!authToken) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
+          if (stored) {
+            authToken = stored;
+          }
+        }
+      } catch (error) {
+        authToken = null;
+      }
+    }
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+    }
+  }
+
+  rest.headers = headers;
+
+  const response = await fetch(buildUrl(path), rest);
+  if (response.status === 401) {
+    notifyUnauthorized();
+  }
+  if (rawResponse) {
+    return response;
+  }
+  return handleResponse(response);
+}
+
 export function getRepos() {
-  return fetch(buildUrl('/repos')).then(handleResponse);
+  return request('/repos');
 }
 
 export function cloneRepo(payload) {
-  return fetch(buildUrl('/clone'), {
+  return request('/clone', {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function importZip(formData) {
-  return fetch(buildUrl('/import-zip'), {
+  return request('/import-zip', {
     method: 'POST',
     body: formData
-  }).then(handleResponse);
+  });
 }
 
 export function getTree(repoId, path = '') {
   const encodedPath = encodeURIComponent(path);
-  return fetch(buildUrl(`/repo/${repoId}/tree?path=${encodedPath}`)).then(handleResponse);
+  return request(`/repo/${repoId}/tree?path=${encodedPath}`);
 }
 
 export async function getFile(repoId, path) {
@@ -77,8 +162,7 @@ export async function getFile(repoId, path) {
 
   const encodedPath = encodeURIComponent(path);
   try {
-    const response = await fetch(buildUrl(`/repo/${repoId}/file?path=${encodedPath}`));
-    const data = await handleResponse(response);
+    const data = await request(`/repo/${repoId}/file?path=${encodedPath}`);
     const content = typeof data === 'string' ? data : data?.content ?? '';
     await cacheFile(repoId, path, content);
     return data;
@@ -104,12 +188,10 @@ export async function saveFile(repoId, path, content) {
   }
 
   try {
-    const response = await fetch(buildUrl(`/repo/${repoId}/file`), {
+    const result = await request(`/repo/${repoId}/file`, {
       method: 'PUT',
-      headers: jsonHeaders,
       body: JSON.stringify(payload)
     });
-    const result = await handleResponse(response);
     await cacheFile(repoId, path, content);
     return result;
   } catch (error) {
@@ -121,123 +203,118 @@ export async function saveFile(repoId, path, content) {
 }
 
 export function getStatus(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/status`)).then(handleResponse);
+  return request(`/repo/${repoId}/status`);
 }
 
 export function getDiff(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/diff`)).then(handleResponse);
+  return request(`/repo/${repoId}/diff`);
 }
 
-export function stageFile(repoId, path) {
-  return fetch(buildUrl(`/repo/${repoId}/stage`), {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path })
-  }).then(handleResponse);
+function toPathArray(input) {
+  if (Array.isArray(input)) {
+    return input;
+  }
+  if (input == null) {
+    return [];
+  }
+  return [input];
 }
 
-export function unstageFile(repoId, path) {
-  return fetch(buildUrl(`/repo/${repoId}/unstage`), {
+export function stageFile(repoId, paths) {
+  return request(`/repo/${repoId}/stage`, {
     method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path })
-  }).then(handleResponse);
+    body: JSON.stringify({ paths: toPathArray(paths) })
+  });
+}
+
+export function unstageFile(repoId, paths) {
+  return request(`/repo/${repoId}/unstage`, {
+    method: 'POST',
+    body: JSON.stringify({ paths: toPathArray(paths) })
+  });
 }
 
 export function commit(repoId, payload) {
-  return fetch(buildUrl(`/repo/${repoId}/commit`), {
+  return request(`/repo/${repoId}/commit`, {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function suggestCommitMessage(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/suggest-commit-message`), {
+  return request(`/repo/${repoId}/suggest-commit-message`, {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify({})
-  }).then(handleResponse);
+  });
 }
 
 export function push(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/push`), {
-    method: 'POST'
-  }).then(handleResponse);
+  return request(`/repo/${repoId}/push`, { method: 'POST' });
 }
 
 export function fetchRemote(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/fetch`), {
-    method: 'POST'
-  }).then(handleResponse);
+  return request(`/repo/${repoId}/fetch`, { method: 'POST' });
 }
 
 export function merge(repoId, payload) {
-  return fetch(buildUrl(`/repo/${repoId}/merge`), {
+  return request(`/repo/${repoId}/merge`, {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function getBranches(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/branches`)).then(handleResponse);
+  return request(`/repo/${repoId}/branches`);
 }
 
 export function createBranch(repoId, payload) {
-  return fetch(buildUrl(`/repo/${repoId}/branch/create`), {
+  return request(`/repo/${repoId}/branch/create`, {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function switchBranch(repoId, payload) {
-  return fetch(buildUrl(`/repo/${repoId}/branch/switch`), {
+  return request(`/repo/${repoId}/branch/switch`, {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function deleteBranch(repoId, payload) {
-  return fetch(buildUrl(`/repo/${repoId}/branch`), {
+  return request(`/repo/${repoId}/branch`, {
     method: 'DELETE',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function searchRepo(repoId, query) {
   const encoded = encodeURIComponent(query);
-  return fetch(buildUrl(`/repo/${repoId}/search?q=${encoded}`)).then(handleResponse);
+  return request(`/repo/${repoId}/search?q=${encoded}`);
 }
 
 export function listSSHKeys() {
-  return fetch(buildUrl('/keys/list')).then(handleResponse);
+  return request('/keys/list');
 }
 
 export function uploadSSHKey(payload) {
-  return fetch(buildUrl('/keys/upload'), {
+  return request('/keys/upload', {
     method: 'POST',
-    headers: jsonHeaders,
     body: JSON.stringify(payload)
-  }).then(handleResponse);
+  });
 }
 
 export function deleteSSHKey(keyId) {
-  return fetch(buildUrl(`/keys/${keyId}`), {
-    method: 'DELETE'
-  }).then(handleResponse);
+  return request(`/keys/${keyId}`, { method: 'DELETE' });
 }
 
 export function getLfsList(repoId) {
-  return fetch(buildUrl(`/repo/${repoId}/lfs/list`)).then(handleResponse);
+  return request(`/repo/${repoId}/lfs/list`);
 }
 
 export function fetchLfsFile(repoId, path) {
   const encoded = encodeURIComponent(path);
-  return fetch(buildUrl(`/repo/${repoId}/lfs/fetch?path=${encoded}`)).then(handleResponse);
+  return request(`/repo/${repoId}/lfs/fetch?path=${encoded}`);
 }
 
 export function syncOfflineChanges(repoId, options = {}) {
@@ -258,6 +335,53 @@ export function syncAllOfflineChanges(options = {}) {
 
 export function getReposWithOfflineChanges() {
   return getReposWithPendingChanges();
+}
+
+export async function registerUser(credentials) {
+  return request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+    skipAuth: true
+  });
+}
+
+export async function loginUser(credentials) {
+  const result = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+    skipAuth: true
+  });
+  if (!result || !result.token) {
+    throw new Error('Authentication response did not include a token');
+  }
+  setAuthToken(result.token);
+  return result;
+}
+
+export function logoutUser() {
+  clearAuthToken();
+}
+
+export function listSecrets(repoId) {
+  return request(`/repo/${repoId}/secrets`);
+}
+
+export function createSecret(repoId, payload) {
+  return request(`/repo/${repoId}/secrets`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteSecret(repoId, payload) {
+  return request(`/repo/${repoId}/secrets`, {
+    method: 'DELETE',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getActivity(repoId) {
+  return request(`/repo/${repoId}/activity`);
 }
 
 export { OFFLINE_EVENT };
